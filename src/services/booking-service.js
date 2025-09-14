@@ -63,8 +63,8 @@ async function makePayment(data) {
     }
     const bookingTime = bookingDetails.dataValues.createdAt;
     const currentTime = new Date();
-    if(currentTime - bookingTime >= 9000000){
-      await bookingRepository.updateBooking(data.bookingID, {status: CANCELLED}, transaction);
+    if(currentTime - bookingTime >= 60000){
+      await cancelBooking(data.bookingID);
       throw(new AppError(
         "Transaction timed out",
         StatusCodes.BAD_REQUEST,
@@ -87,6 +87,27 @@ async function makePayment(data) {
     const updatedBooking = await bookingRepository.updateBooking(data.bookingID, {status: BOOKED}, transaction);
     await transaction.commit();
     return updatedBooking;
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
+
+async function cancelBooking(bookingID) {
+  const transaction = await db.sequelize.transaction();
+  try {
+    const bookingDetails = await bookingRepository.getBooking(bookingID, transaction);
+    console.log(bookingDetails)
+    if(bookingDetails.dataValues.status == CANCELLED){
+      await transaction.commit();
+      return true;
+    }
+    await axios.patch(`${ServerConfig.FLIGHT_SERVICE}/api/v1/flights/${bookingDetails.dataValues.flightId}/seats`, {
+      seats: bookingDetails.dataValues.noOfSeats,
+      decrease: 0
+    })
+    await bookingRepository.updateBooking(bookingID, {status: CANCELLED}, transaction);
+    await transaction.commit();
   } catch (error) {
     await transaction.rollback();
     throw error;
