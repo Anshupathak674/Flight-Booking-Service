@@ -6,6 +6,8 @@ const axios = require('axios');
 const db = require('../models')
 const {Enums} = require('../utils/common');
 const {BOOKED, CANCELLED, INITIATED, PENDING} = Enums.BOOKING_STATUS
+const { Op } = require("sequelize");
+
 
 const bookingRepository = new BookingRepository();
 
@@ -114,6 +116,16 @@ async function cancelBooking(bookingID) {
   }
 }
 
+async function cancelOldBookings(){
+  try {
+    const currentTime = new Date( Date.now() - 1000 * 300 ); // time 5 mins ago;
+    const response = await bookingRepository.cancelOldBookings(currentTime);
+    return response
+  } catch (error) {
+    console.log(error)
+  }
+}
+
 async function getBookings() {
   try {
     const bookings = await bookingRepository.getAll();
@@ -148,5 +160,6 @@ module.exports = {
   createBooking,
   getBookings,
   getBooking,
-  makePayment
+  makePayment,
+  cancelOldBookings
 };
