@@ -4,6 +4,8 @@ const AppError = require("../utils/errors/app-error");
 const { ServerConfig } = require('../config');
 const axios = require('axios');
 const db = require('../models')
+const {Enums} = require('../utils/common');
+const {BOOKED, CANCELLED, INITIATED, PENDING} = Enums.BOOKING_STATUS
 
 const bookingRepository = new BookingRepository();
 
@@ -48,6 +50,49 @@ async function createBooking(data) {
     }
 }
 
+
+async function makePayment(data) {
+  const transaction = await db.sequelize.transaction();
+  try {
+    const bookingDetails = await bookingRepository.getBooking(data.bookingID, transaction);
+    if(bookingDetails.dataValues.status == CANCELLED){
+      throw(new AppError(
+        "The booking is cancelled",
+        StatusCodes.BAD_REQUEST,
+      ));
+    }
+    const bookingTime = bookingDetails.dataValues.createdAt;
+    const currentTime = new Date();
+    if(currentTime - bookingTime >= 9000000){
+      await bookingRepository.updateBooking(data.bookingID, {status: CANCELLED}, transaction);
+      throw(new AppError(
+        "Transaction timed out",
+        StatusCodes.BAD_REQUEST,
+      ));
+    }
+    if(bookingDetails.totalCost != data.totalCost){
+      throw(new AppError(
+        "Insufficient Amount",
+        StatusCodes.BAD_REQUEST,
+      ));
+    }
+
+    if(bookingDetails.userId != data.userId){
+      throw(new AppError(
+        "User doesn't match",
+        StatusCodes.BAD_REQUEST,
+      ));
+    }
+
+    const updatedBooking = await bookingRepository.updateBooking(data.bookingID, {status: BOOKED}, transaction);
+    await transaction.commit();
+    return updatedBooking;
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
+
 async function getBookings() {
   try {
     const bookings = await bookingRepository.getAll();
@@ -82,4 +127,5 @@ module.exports = {
   createBooking,
   getBookings,
   getBooking,
+  makePayment
 };
